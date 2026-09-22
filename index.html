@@ -269,10 +269,10 @@ async function loadData(){
     const json = await res.json();
     if(json && json.ok){
       state.products = PRODUCTS_FIXED;
-      state.log = (json.data||[]).map(r=>{
+      state.log = (json.data||[]).map((r, idx)=>{
         const p = (r.ts!==undefined && r.ts!=='') ? tashkentParts(Number(r.ts)) : null;
         return {
-          id:String(r.id), ts:Number(r.ts)||0,
+          id:String(r.id), ts:Number(r.ts)||0, rowIndex: idx+2,
           date: p ? p.dateStr : String(r.date||'').slice(0,10),
           dateHuman: p ? p.humanStr : (r.dateHuman||''),
           time: p ? p.timeStr : (r.time||''),
@@ -295,14 +295,11 @@ async function loadData(){
 }
 
 async function postAction(body){
-  const res = await fetch(SCRIPT_URL, {
+  await fetch(SCRIPT_URL, {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify(body)
   });
-  const text = await res.text();
-  if(body.action === 'delete'){ alert(text); }
-  return JSON.parse(text);
 }
 
 function showToast(msg){
@@ -545,7 +542,7 @@ function renderHisobot(){
         <div>${e.productName || productName(e.productId)} — ${desc}</div>
         <div class="meta">${e.dateHuman} ${e.time}</div>
       </div>
-      <button class="del-btn" data-del="${e.id}">✕</button>
+      <button class="del-btn" data-del="${e.id}" data-delrow="${e.rowIndex||''}">✕</button>
     </div>`;
   }).join('') : `<div class="empty">Hali yozuv yo'q</div>`;
 
@@ -774,10 +771,13 @@ function attachHandlers(){
   document.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick = async ()=>{
       const id = btn.getAttribute('data-del');
-      const idx = state.log.findIndex(e=>e.id===id);
+      const rowIndexAttr = btn.getAttribute('data-delrow');
+      const rowIndex = rowIndexAttr ? Number(rowIndexAttr) : undefined;
+      const idx = state.log.findIndex(e=> (rowIndex && e.rowIndex===rowIndex) || (!rowIndex && e.id===id) );
       if(idx === -1) return;
+      const entry = state.log[idx];
       try{
-        await postAction({ action:'delete', id });
+        await postAction({ action:'delete', id, rowIndex, productId: entry.productId, qty: entry.qty });
         state.log.splice(idx,1);
         recompute();
         showToast("O'chirildi");
@@ -799,7 +799,7 @@ function attachHandlers(){
       btn.disabled = true;
       try{
         for(const e of toDelete){
-          await postAction({ action:'delete', id:e.id });
+          await postAction({ action:'delete', id:e.id, rowIndex:e.rowIndex, productId:e.productId, qty:e.qty });
         }
         state.log = state.log.filter(e=>!toDelete.includes(e));
         recompute();
